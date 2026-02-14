@@ -1,0 +1,12 @@
+__pycache__/
+*.egg-info/
+.pytest_cache/
+*.csv
+*.txt
+*.yaml
+*.json
+.claude
+.venv
+.idea
+*.toml
+*.DS_Store
