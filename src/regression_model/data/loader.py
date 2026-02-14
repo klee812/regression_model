@@ -1,40 +1,55 @@
-"""CSV data loading and pivoting from long to wide format."""
+"""CSV data loading and delegation to the normalize pipeline."""
 
 from __future__ import annotations
 
+import csv
 from pathlib import Path
 
-import pandas as pd
-
+from regression_model.data.normalize import normalize
 from regression_model.models import AppConfig, PriceData
 
 
-def _load_csv(path: str | Path, figis: list[str]) -> pd.DataFrame:
-    """Load a long-format CSV (date, figi, close) and pivot to wide format.
+def _read_csv_dicts(path: str | Path) -> list[dict]:
+    """Read a CSV file and return its rows as a list of dicts.
 
     Args:
         path: Filesystem path to the CSV file.
-        figis: FIGI identifiers to keep.
 
     Returns:
-        A wide-format DataFrame indexed by date with one column per FIGI.
+        A list of dicts, one per row, keyed by column header.
     """
-    df = pd.read_csv(path, parse_dates=["date"])
-    df = df[df["figi"].isin(figis)]
-    wide = df.pivot(index="date", columns="figi", values="close")
-    wide = wide.sort_index()
-    return wide[figis]  # enforce column order
+    with open(path, newline="") as f:
+        return list(csv.DictReader(f))
 
 
 def load_all(config: AppConfig) -> PriceData:
-    """Load target and driver price CSVs specified in the config.
+    """Load CSV files and run the normalization pipeline.
 
     Args:
-        config: Application configuration with data paths and FIGI lists.
+        config: Application configuration with data paths and identifier lists.
 
     Returns:
-        A ``PriceData`` instance with wide-format target and driver prices.
+        A ``PriceData`` instance with normalized target and driver prices.
     """
-    targets = _load_csv(config.data.targets_path, config.targets)
-    drivers = _load_csv(config.data.drivers_path, config.drivers)
-    return PriceData(targets=targets, drivers=drivers)
+    prices = _read_csv_dicts(config.data.prices_path)
+
+    corp_actions: list[dict] = []
+    if config.data.corp_actions_path:
+        corp_actions = _read_csv_dicts(config.data.corp_actions_path)
+
+    dividends: list[dict] = []
+    if config.data.dividends_path:
+        dividends = _read_csv_dicts(config.data.dividends_path)
+
+    fx_rates: list[dict] = []
+    if config.data.fx_rates_path:
+        fx_rates = _read_csv_dicts(config.data.fx_rates_path)
+
+    return normalize(
+        prices=prices,
+        corp_actions=corp_actions,
+        dividends=dividends,
+        fx_rates=fx_rates,
+        targets=config.targets,
+        drivers=config.drivers,
+    )

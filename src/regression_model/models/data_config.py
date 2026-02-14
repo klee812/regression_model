@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass
 class DataConfig:
-    """Paths to the target and driver price CSV files."""
+    """Paths to price, corporate action, dividend, and FX rate CSV files."""
 
-    targets_path: str
-    drivers_path: str
+    prices_path: str = ""
+    corp_actions_path: str = ""
+    dividends_path: str = ""
+    fx_rates_path: str = ""

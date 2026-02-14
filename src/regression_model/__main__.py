@@ -6,6 +6,7 @@ import sys
 
 from regression_model.config import load_config
 from regression_model.data.loader import load_all
+from regression_model.data.preprocess import prepare_prices, prepare_returns
 from regression_model.data.transforms import prices_to_returns
 from regression_model.output.writer import write_results
 from regression_model.regression import registry
@@ -19,7 +20,9 @@ def main(config_path: str) -> None:
     """
     config = load_config(config_path)
     prices = load_all(config)
+    prices = prepare_prices(prices, config.preprocessing)
     returns = prices_to_returns(prices)
+    returns = prepare_returns(returns, config.preprocessing)
 
     strategy = registry.create(config.regression.method, **config.regression.params)
 

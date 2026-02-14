@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 
 from regression_model.models.data_config import DataConfig
 from regression_model.models.output_config import OutputConfig
+from regression_model.models.preprocessing_config import PreprocessingConfig
 from regression_model.models.regression_config import RegressionConfig
 
 
@@ -18,3 +19,4 @@ class AppConfig:
     drivers: list[str]
     regression: RegressionConfig = field(default_factory=RegressionConfig)
     output: OutputConfig = field(default_factory=OutputConfig)
+    preprocessing: PreprocessingConfig = field(default_factory=PreprocessingConfig)

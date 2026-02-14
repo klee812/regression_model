@@ -7,6 +7,7 @@ Re-exports all model classes so existing imports like
 from regression_model.models.app_config import AppConfig
 from regression_model.models.data_config import DataConfig
 from regression_model.models.output_config import OutputConfig
+from regression_model.models.preprocessing_config import PreprocessingConfig
 from regression_model.models.price_data import PriceData
 from regression_model.models.regression_config import RegressionConfig
 from regression_model.models.regression_result import RegressionResult
@@ -16,6 +17,7 @@ __all__ = [
     "AppConfig",
     "DataConfig",
     "OutputConfig",
+    "PreprocessingConfig",
     "PriceData",
     "RegressionConfig",
     "RegressionResult",

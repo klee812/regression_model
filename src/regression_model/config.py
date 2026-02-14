@@ -10,6 +10,7 @@ from regression_model.models import (
     AppConfig,
     DataConfig,
     OutputConfig,
+    PreprocessingConfig,
     RegressionConfig,
 )
 
@@ -26,9 +27,10 @@ def load_config(path: str | Path) -> AppConfig:
     with open(path) as f:
         raw = yaml.safe_load(f)
 
-    data_cfg = DataConfig(**raw["data"])
+    data_cfg = DataConfig(**raw.get("data", {}))
     regression_cfg = RegressionConfig(**raw.get("regression", {}))
     output_cfg = OutputConfig(**raw.get("output", {}))
+    preprocessing_cfg = PreprocessingConfig(**raw.get("preprocessing", {}))
 
     return AppConfig(
         data=data_cfg,
@@ -36,4 +38,5 @@ def load_config(path: str | Path) -> AppConfig:
         drivers=raw["drivers"],
         regression=regression_cfg,
         output=output_cfg,
+        preprocessing=preprocessing_cfg,
     )

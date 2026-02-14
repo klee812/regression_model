@@ -10,54 +10,57 @@ from regression_model.__main__ import main
 
 def test_full_pipeline_json(tmp_path):
     """Full pipeline from CSV files through regression to JSON output."""
-    # create target prices
-    targets_csv = textwrap.dedent("""\
-        date,figi,close
-        2024-01-02,T1,100.0
-        2024-01-03,T1,102.0
-        2024-01-04,T1,101.0
-        2024-01-05,T1,103.0
-        2024-01-08,T1,105.0
-        2024-01-09,T1,104.0
-        2024-01-10,T1,106.0
-        2024-01-11,T1,108.0
-        2024-01-12,T1,107.0
-        2024-01-15,T1,109.0
+    # create combined prices file
+    prices_csv = textwrap.dedent("""\
+        identifier,currency,date,price
+        T1,USD,2024-01-02,100.0
+        D1,USD,2024-01-02,200.0
+        D2,USD,2024-01-02,50.0
+        T1,USD,2024-01-03,102.0
+        D1,USD,2024-01-03,204.0
+        D2,USD,2024-01-03,49.0
+        T1,USD,2024-01-04,101.0
+        D1,USD,2024-01-04,202.0
+        D2,USD,2024-01-04,51.0
+        T1,USD,2024-01-05,103.0
+        D1,USD,2024-01-05,206.0
+        D2,USD,2024-01-05,50.0
+        T1,USD,2024-01-08,105.0
+        D1,USD,2024-01-08,210.0
+        D2,USD,2024-01-08,52.0
+        T1,USD,2024-01-09,104.0
+        D1,USD,2024-01-09,208.0
+        D2,USD,2024-01-09,51.0
+        T1,USD,2024-01-10,106.0
+        D1,USD,2024-01-10,212.0
+        D2,USD,2024-01-10,53.0
+        T1,USD,2024-01-11,108.0
+        D1,USD,2024-01-11,216.0
+        D2,USD,2024-01-11,52.0
+        T1,USD,2024-01-12,107.0
+        D1,USD,2024-01-12,214.0
+        D2,USD,2024-01-12,54.0
+        T1,USD,2024-01-15,109.0
+        D1,USD,2024-01-15,218.0
+        D2,USD,2024-01-15,53.0
     """)
-    (tmp_path / "targets.csv").write_text(targets_csv)
+    (tmp_path / "prices.csv").write_text(prices_csv)
 
-    # create driver prices
-    drivers_csv = textwrap.dedent("""\
-        date,figi,close
-        2024-01-02,D1,200.0
-        2024-01-02,D2,50.0
-        2024-01-03,D1,204.0
-        2024-01-03,D2,49.0
-        2024-01-04,D1,202.0
-        2024-01-04,D2,51.0
-        2024-01-05,D1,206.0
-        2024-01-05,D2,50.0
-        2024-01-08,D1,210.0
-        2024-01-08,D2,52.0
-        2024-01-09,D1,208.0
-        2024-01-09,D2,51.0
-        2024-01-10,D1,212.0
-        2024-01-10,D2,53.0
-        2024-01-11,D1,216.0
-        2024-01-11,D2,52.0
-        2024-01-12,D1,214.0
-        2024-01-12,D2,54.0
-        2024-01-15,D1,218.0
-        2024-01-15,D2,53.0
-    """)
-    (tmp_path / "drivers.csv").write_text(drivers_csv)
+    # create empty corp_actions and dividends
+    (tmp_path / "corp_actions.csv").write_text(
+        "identifier,ex_date,ratio_shares_adjustment,ratio_price_adjustment\n"
+    )
+    (tmp_path / "dividends.csv").write_text(
+        "identifier,ex_date,ratio_shares_adjustment,div_amount\n"
+    )
 
     # create config
     output_path = tmp_path / "output" / "results.json"
     config_content = textwrap.dedent(f"""\
         data:
-          targets_path: "{tmp_path / 'targets.csv'}"
-          drivers_path: "{tmp_path / 'drivers.csv'}"
+          prices_path: "{tmp_path / 'prices.csv'}"
+          corp_actions_path: "{tmp_path / 'corp_actions.csv'}"
+          dividends_path: "{tmp_path / 'dividends.csv'}"
         targets:
           - "T1"
         drivers:
