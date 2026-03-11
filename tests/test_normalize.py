@@ -126,8 +126,8 @@ def test_convert_to_usd():
     currencies = {"A": "USD", "B": "EUR"}
 
     fx_records = [
-        {"date": "2024-01-02", "currency": "EUR", "rate": "0.9"},
-        {"date": "2024-01-03", "currency": "EUR", "rate": "0.9"},
+        {"date": "2024-01-02", "fxsymbol": "EUR", "rate": "0.9"},
+        {"date": "2024-01-03", "fxsymbol": "EUR", "rate": "0.9"},
     ]
     result = convert_to_usd(prices, currencies, fx_records)
 
@@ -147,6 +147,44 @@ def test_convert_to_usd_all_usd():
     result = convert_to_usd(prices, currencies, [])
 
     pd.testing.assert_frame_equal(result, prices)
+
+
+def test_convert_to_usd_fx_dates_differ_from_prices():
+    """FX rates on non-price dates forward-fill correctly into price dates."""
+    # Prices on Jan 3 and Jan 4 (business days)
+    price_dates = pd.to_datetime(["2024-01-03", "2024-01-04"])
+    prices = pd.DataFrame({"B": [150.0, 153.0]}, index=price_dates)
+    currencies = {"B": "EUR"}
+
+    # FX rate only on Jan 1 (not a price date) — should fill into Jan 3 and 4
+    fx_records = [
+        {"date": "2024-01-01", "fxsymbol": "EUR", "rate": "0.9"},
+    ]
+    result = convert_to_usd(prices, currencies, fx_records)
+
+    assert result.loc[price_dates[0], "B"] == pytest.approx(150.0 / 0.9)
+    assert result.loc[price_dates[1], "B"] == pytest.approx(153.0 / 0.9)
+
+
+def test_convert_to_usd_fx_rate_updates_midstream():
+    """FX rate changes partway through the price series."""
+    price_dates = pd.to_datetime(["2024-01-02", "2024-01-03", "2024-01-04"])
+    prices = pd.DataFrame({"B": [90.0, 91.0, 92.0]}, index=price_dates)
+    currencies = {"B": "EUR"}
+
+    # Rate changes on Jan 3
+    fx_records = [
+        {"date": "2024-01-01", "fxsymbol": "EUR", "rate": "0.9"},
+        {"date": "2024-01-03", "fxsymbol": "EUR", "rate": "0.8"},
+    ]
+    result = convert_to_usd(prices, currencies, fx_records)
+
+    # Jan 2: uses Jan 1 rate (forward-filled)
+    assert result.loc[price_dates[0], "B"] == pytest.approx(90.0 / 0.9)
+    # Jan 3: uses new rate
+    assert result.loc[price_dates[1], "B"] == pytest.approx(91.0 / 0.8)
+    # Jan 4: forward-filled from Jan 3
+    assert result.loc[price_dates[2], "B"] == pytest.approx(92.0 / 0.8)
 
 
 def test_convert_to_usd_missing_currency_raises():

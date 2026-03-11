@@ -9,6 +9,7 @@ import pytest
 from regression_model.data.preprocess import (
     handle_missing,
     handle_outliers,
+    trim_lookback,
     validate_prices,
 )
 from regression_model.models import PriceData, ReturnsData
@@ -53,6 +54,41 @@ def _make_returns(
         {f"D{i}": v for i, v in enumerate(driver_values)}, index=dates
     )
     return ReturnsData(targets=targets, drivers=drivers)
+
+
+# ---------------------------------------------------------------------------
+# trim_lookback
+# ---------------------------------------------------------------------------
+
+
+class TestTrimLookback:
+    def test_trims_to_lookback_days(self):
+        """Only dates within lookback_days of the latest date are kept."""
+        dates = pd.date_range("2024-01-02", periods=100, freq="B")
+        targets = pd.DataFrame({"T0": range(100)}, index=dates, dtype=float)
+        drivers = pd.DataFrame({"D0": range(100)}, index=dates, dtype=float)
+        prices = PriceData(targets=targets, drivers=drivers)
+
+        config = PreprocessingConfig(lookback_days=30)
+        result = trim_lookback(prices, config)
+
+        max_date = dates[-1]
+        cutoff = max_date - pd.Timedelta(days=30)
+        assert result.targets.index.min() >= cutoff
+        assert result.drivers.index.min() >= cutoff
+        assert result.targets.index.max() == max_date
+        assert len(result.targets) < 100
+
+    def test_zero_means_no_trimming(self):
+        """lookback_days=0 keeps all data."""
+        prices = _make_prices(
+            [[100, 101, 102, 103, 104]],
+            [[200, 201, 202, 203, 204]],
+        )
+        config = PreprocessingConfig(lookback_days=0)
+        result = trim_lookback(prices, config)
+        pd.testing.assert_frame_equal(result.targets, prices.targets)
+        pd.testing.assert_frame_equal(result.drivers, prices.drivers)
 
 
 # ---------------------------------------------------------------------------

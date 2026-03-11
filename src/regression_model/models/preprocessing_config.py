@@ -19,3 +19,5 @@ class PreprocessingConfig:
     validate_prices: bool = True
     # Minimum rows required after cleaning
     min_observations: int = 10
+    # Maximum calendar days of history to use (0 = unlimited)
+    lookback_days: int = 0

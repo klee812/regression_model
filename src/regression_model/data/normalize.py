@@ -111,7 +111,7 @@ def convert_to_usd(
     Args:
         prices: Wide price DataFrame (date index, identifier columns).
         currencies: ``{identifier: currency}`` mapping.
-        records: Dicts with ``date``, ``currency``, ``rate``.
+        records: Dicts with ``date``, ``fxsymbol``, ``rate``.
 
     Returns:
         Prices converted to USD.
@@ -134,11 +134,13 @@ def convert_to_usd(
 
     fx_df["date"] = pd.to_datetime(fx_df["date"])
     fx_df["rate"] = fx_df["rate"].astype(float)
-    fx_wide = fx_df.pivot(index="date", columns="currency", values="rate")
-    fx_wide = fx_wide.sort_index().ffill()
+    fx_wide = fx_df.pivot(index="date", columns="fxsymbol", values="rate")
+    fx_wide = fx_wide.sort_index()
 
-    # Reindex to price dates and forward-fill
-    fx_wide = fx_wide.reindex(prices.index).ffill()
+    # Merge FX and price date indices so that FX rates on non-price dates
+    # can forward-fill into price dates that follow them.
+    combined = fx_wide.index.union(prices.index).sort_values()
+    fx_wide = fx_wide.reindex(combined).ffill().loc[prices.index]
 
     prices = prices.copy()
     for ident, ccy in non_usd.items():

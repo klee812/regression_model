@@ -2,10 +2,41 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
+
 import numpy as np
 
 from regression_model.models import PriceData, ReturnsData
 from regression_model.models.preprocessing_config import PreprocessingConfig
+
+
+# ---------------------------------------------------------------------------
+# Lookback trimming
+# ---------------------------------------------------------------------------
+
+def trim_lookback(prices: PriceData, config: PreprocessingConfig) -> PriceData:
+    """Trim price data to the most recent ``lookback_days`` calendar days.
+
+    The cutoff is computed from the latest date across both targets and
+    drivers.  A value of 0 (the default) disables trimming.
+
+    Args:
+        prices: Wide-format target and driver price data.
+        config: Preprocessing configuration.
+
+    Returns:
+        A ``PriceData`` with rows older than the cutoff removed.
+    """
+    if config.lookback_days <= 0:
+        return prices
+
+    max_date = max(prices.targets.index.max(), prices.drivers.index.max())
+    cutoff = max_date - timedelta(days=config.lookback_days)
+
+    return PriceData(
+        targets=prices.targets.loc[prices.targets.index >= cutoff],
+        drivers=prices.drivers.loc[prices.drivers.index >= cutoff],
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -145,6 +176,7 @@ def prepare_prices(prices: PriceData, config: PreprocessingConfig) -> PriceData:
     Returns:
         Cleaned ``PriceData`` ready for return computation.
     """
+    prices = trim_lookback(prices, config)
     prices = validate_prices(prices, config)
     prices = handle_missing(prices, config)
     return prices
