@@ -11,11 +11,13 @@ from regression_model.models.preprocessing_config import PreprocessingConfig
 from regression_model.models.price_data import PriceData
 from regression_model.models.regression_config import RegressionConfig
 from regression_model.models.regression_result import RegressionResult
+from regression_model.models.resolution_config import IdentifierResolutionConfig
 from regression_model.models.returns_data import ReturnsData
 
 __all__ = [
     "AppConfig",
     "DataConfig",
+    "IdentifierResolutionConfig",
     "OutputConfig",
     "PreprocessingConfig",
     "PriceData",

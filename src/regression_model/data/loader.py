@@ -45,11 +45,25 @@ def load_all(config: AppConfig) -> PriceData:
     if config.data.fx_rates_path:
         fx_rates = _read_csv_dicts(config.data.fx_rates_path)
 
+    targets = config.targets
+    drivers = config.drivers
+
+    if config.resolution and config.resolution.enabled:
+        from regression_model.data.resolve import resolve_identifiers, remap_price_records
+
+        all_symbols = list(dict.fromkeys(
+            targets + drivers + [r["identifier"] for r in prices]
+        ))
+        symbol_to_figi = resolve_identifiers(all_symbols, config.resolution)
+        targets = [symbol_to_figi.get(t, t) for t in targets if symbol_to_figi.get(t) is not None]
+        drivers = [symbol_to_figi.get(d, d) for d in drivers if symbol_to_figi.get(d) is not None]
+        prices = remap_price_records(prices, symbol_to_figi)
+
     return normalize(
         prices=prices,
         corp_actions=corp_actions,
         dividends=dividends,
         fx_rates=fx_rates,
-        targets=config.targets,
-        drivers=config.drivers,
+        targets=targets,
+        drivers=drivers,
     )
