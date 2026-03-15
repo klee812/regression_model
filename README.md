@@ -100,6 +100,54 @@ Example row: `2023-01-03,EUR,0.9350`
 
 ---
 
+## Identifier Resolution
+
+By default, targets and drivers in `config.yaml` must be FIGIs. Optionally, you can supply tickers, ISINs, CUSIPs, or any identifier type supported by OpenFIGI and have them resolved automatically before the pipeline runs. FIGIs are passed through unchanged — zero API calls for pure-FIGI configs.
+
+### Install with resolution support
+
+```bash
+pip install -e ".[resolution]"
+pip install openfigi-cache   # provides batch_lookup + local caching
+export OPENFIGI_API_KEY=your-key
+```
+
+### Quick start with tickers
+
+```yaml
+resolution:
+  enabled: true
+  id_type: "TICKER"
+  exch_code: "US"
+  on_failure: "raise"        # or "warn" / "skip"
+  cache_path: ".figi_cache.json"
+  # optional per-symbol overrides:
+  overrides:
+    US0378331005:
+      id_type: "ID_ISIN"
+
+targets:
+  - AAPL                     # ticker — resolved to FIGI automatically
+drivers:
+  - MSFT
+  - BBG000BPH459             # already a FIGI — passed through, no API call
+```
+
+### Resolution config reference
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `resolution.enabled` | bool | `false` | Must be `true` to activate resolution |
+| `resolution.id_type` | string | `"TICKER"` | Default OpenFIGI `idType` for all symbols |
+| `resolution.exch_code` | string | `null` | OpenFIGI exchange code filter (e.g. `"US"`) |
+| `resolution.mic_code` | string | `null` | MIC filter (e.g. `"XNAS"`) |
+| `resolution.currency` | string | `null` | Currency filter (e.g. `"USD"`) |
+| `resolution.cache_path` | string | `".figi_cache.json"` | Path for the local lookup cache |
+| `resolution.on_failure` | string | `"raise"` | What to do when a symbol can't be resolved: `raise`, `warn`, or `skip` |
+| `resolution.overrides` | dict | `{}` | Per-symbol overrides for any of the above fields |
+
+---
+
 ## Configuration
 
 Full reference for `config.yaml`:
@@ -110,8 +158,8 @@ Full reference for `config.yaml`:
 | `data.corp_actions_path` | string | `null` | Path to `corp_actions.csv` (optional) |
 | `data.dividends_path` | string | `null` | Path to `dividends.csv` (optional) |
 | `data.fx_rates_path` | string | `null` | Path to `fx_rates.csv` (optional) |
-| `targets` | list of strings | — | Identifiers to use as regression Y variables (required) |
-| `drivers` | list of strings | — | Identifiers to use as regression X variables (required) |
+| `targets` | list of strings | — | FIGIs (or resolvable identifiers) to use as regression Y variables (required) |
+| `drivers` | list of strings | — | FIGIs (or resolvable identifiers) to use as regression X variables (required) |
 | `regression.method` | string | `"ols"` | Regression method: `ols`, `lasso`, `lars`, `elastic_net` |
 | `regression.params` | dict | `{}` | Extra kwargs forwarded to the sklearn estimator |
 | `preprocessing.lookback_days` | int | `0` | Trim history to this many calendar days before the latest date; `0` = unlimited |
