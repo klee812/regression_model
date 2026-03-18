@@ -1,4 +1,4 @@
-"""Write regression results to JSON or CSV files."""
+"""Write and read regression results (JSON or CSV)."""
 
 from __future__ import annotations
 
@@ -7,6 +7,23 @@ import json
 from pathlib import Path
 
 from regression_model.models import RegressionResult
+
+
+def load_results(path: str | Path) -> list[RegressionResult]:
+    """Load regression results from a JSON file written by ``write_results``.
+
+    Args:
+        path: Path to the JSON output file.
+
+    Returns:
+        List of ``RegressionResult`` instances, one per target.
+    """
+    with open(path) as f:
+        raw = json.load(f)
+    return [
+        RegressionResult.from_dict(figi, data)
+        for figi, data in raw["results"].items()
+    ]
 
 
 def write_results(

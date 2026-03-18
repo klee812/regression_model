@@ -15,20 +15,20 @@ def build_price_table(
     """Convert price dicts to a wide DataFrame and currency mapping.
 
     Args:
-        records: Dicts with keys ``identifier``, ``currency``, ``date``, ``price``.
+        records: Dicts with keys ``figi``, ``pricedate``, ``Price``, ``currency``.
 
     Returns:
-        A tuple of (wide DataFrame indexed by date, {identifier: currency} mapping).
+        A tuple of (wide DataFrame indexed by date, {figi: currency} mapping).
     """
     df = pd.DataFrame(records)
-    df["date"] = pd.to_datetime(df["date"])
-    df["price"] = df["price"].astype(float)
+    df["pricedate"] = pd.to_datetime(df["pricedate"])
+    df["Price"] = df["Price"].astype(float)
 
     currencies: dict[str, str] = (
-        df.groupby("identifier")["currency"].first().to_dict()
+        df.groupby("figi")["currency"].first().to_dict()
     )
 
-    wide = df.pivot(index="date", columns="identifier", values="price")
+    wide = df.pivot(index="pricedate", columns="figi", values="Price")
     wide = wide.sort_index()
     return wide, currencies
 
@@ -38,25 +38,27 @@ def adjust_for_corp_actions(
 ) -> pd.DataFrame:
     """Apply backward corporate-action adjustments to prices.
 
-    For each event, all prices strictly before ``ex_date`` are multiplied by
-    ``ratio_price_adjustment``.  Events are processed from latest to earliest.
+    For each event, all prices strictly before ``XdDate`` are multiplied by
+    ``PriceAdjustmentFactor``.  Events are processed from latest to earliest.
 
     Args:
         prices: Wide price DataFrame (date index, identifier columns).
-        records: Dicts with ``identifier``, ``ex_date``, ``ratio_price_adjustment``.
+        records: Dicts with ``figi``, ``XdDate``, ``PriceAdjustmentFactor``.
+            Other keys (``Bloomberg``, ``MIC``, ``Name``, ``SecurityType``,
+            ``ShareAdjustmentFactor``, ...) are ignored.
 
     Returns:
         Adjusted copy of *prices*.
     """
-    events = sorted(records, key=lambda r: r["ex_date"], reverse=True)
+    events = sorted(records, key=lambda r: r["XdDate"], reverse=True)
     if not events:
         return prices.copy()
 
     prices = prices.copy()
     for evt in events:
-        ident = evt["identifier"]
-        ex_date = pd.Timestamp(evt["ex_date"])
-        ratio = float(evt["ratio_price_adjustment"])
+        ident = evt["figi"]
+        ex_date = pd.Timestamp(evt["XdDate"])
+        ratio = float(evt["PriceAdjustmentFactor"])
         if ident in prices.columns:
             mask = prices.index < ex_date
             prices.loc[mask, ident] *= ratio
@@ -68,33 +70,30 @@ def adjust_for_dividends(
 ) -> pd.DataFrame:
     """Apply backward dividend adjustments to prices.
 
-    For each event, all prices strictly before ``ex_date`` have
-    ``div_amount`` subtracted and are then divided by ``ratio_shares_adjustment``.
-    Events are processed from latest to earliest.
+    For each event, all prices strictly before ``XdDate`` have ``NetAmount``
+    subtracted.  Events are processed from latest to earliest.
 
     Args:
         prices: Wide price DataFrame (date index, identifier columns).
-        records: Dicts with ``identifier``, ``ex_date``, ``ratio_shares_adjustment``,
-            ``div_amount``.
+        records: Dicts with ``figi``, ``XdDate``, ``NetAmount``, ``GrossAmount``.
+            Optional keys: ``PayDate``, ``AnnounceDate``, ``DividendType``,
+            ``Bloomberg``.
 
     Returns:
         Adjusted copy of *prices*.
     """
-    events = sorted(records, key=lambda r: r["ex_date"], reverse=True)
+    events = sorted(records, key=lambda r: r["XdDate"], reverse=True)
     if not events:
         return prices.copy()
 
     prices = prices.copy()
     for evt in events:
-        ident = evt["identifier"]
-        ex_date = pd.Timestamp(evt["ex_date"])
-        div_amount = float(evt["div_amount"])
-        ratio = float(evt["ratio_shares_adjustment"])
+        ident = evt["figi"]
+        ex_date = pd.Timestamp(evt["XdDate"])
+        div_amount = float(evt["NetAmount"])
         if ident in prices.columns:
             mask = prices.index < ex_date
-            prices.loc[mask, ident] = (
-                prices.loc[mask, ident] - div_amount
-            ) / ratio
+            prices.loc[mask, ident] -= div_amount
     return prices
 
 
@@ -105,13 +104,15 @@ def convert_to_usd(
 ) -> pd.DataFrame:
     """Convert non-USD prices to USD using FX rate data.
 
-    Rates are expressed as foreign currency units per 1 USD, so
+    Rates are looked up by ``fromcurrencycode`` (e.g. "GBP") and assumed to
+    express the number of ``fromcurrencycode`` units per 1 USD, so that
     ``price_usd = price_local / rate``.  Missing FX dates are forward-filled.
 
     Args:
         prices: Wide price DataFrame (date index, identifier columns).
         currencies: ``{identifier: currency}`` mapping.
-        records: Dicts with ``date``, ``fxsymbol``, ``rate``.
+        records: Dicts with ``pricedate``, ``fromcurrencycode``,
+            ``tocurrencycode``, ``value``.
 
     Returns:
         Prices converted to USD.
@@ -132,9 +133,9 @@ def convert_to_usd(
         missing = set(non_usd.values())
         raise ValueError(f"No FX data provided for currencies: {missing}")
 
-    fx_df["date"] = pd.to_datetime(fx_df["date"])
-    fx_df["rate"] = fx_df["rate"].astype(float)
-    fx_wide = fx_df.pivot(index="date", columns="fxsymbol", values="rate")
+    fx_df["pricedate"] = pd.to_datetime(fx_df["pricedate"])
+    fx_df["value"] = fx_df["value"].astype(float)
+    fx_wide = fx_df.pivot(index="pricedate", columns="fromcurrencycode", values="value")
     fx_wide = fx_wide.sort_index()
 
     # Merge FX and price date indices so that FX rates on non-price dates
@@ -149,6 +150,8 @@ def convert_to_usd(
                 f"No FX rate data for currency '{ccy}' "
                 f"(needed by identifier '{ident}')"
             )
+        # KEVIN_CHECK_HERE: assumes value = fromcurrency-per-USD (divide to convert).
+        # If your feed is USD-per-fromcurrency, change / to *.
         prices[ident] = prices[ident] / fx_wide[ccy]
     return prices
 

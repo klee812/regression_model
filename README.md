@@ -2,6 +2,23 @@
 
 A quantitative finance tool that fits regression models between target and driver securities using historically adjusted price data. Prices are backward-adjusted for corporate actions and dividends, converted to USD, and percent-change returns are fed into OLS, Lasso, Lars, or ElasticNet regression to estimate beta coefficients.
 
+## !! BEFORE YOU RUN THIS — IMPLEMENT THESE FIRST !!
+
+The pipeline will raise `NotImplementedError` immediately until these four functions are filled in.
+Open `src/regression_model/data/sources.py` and search for `KEVIN_CHECK_HERE`.
+
+| Function | File | What to implement |
+|---|---|---|
+| `price_records()` | `src/regression_model/data/sources.py` | Yield one dict per price / NAV observation |
+| `corp_action_records()` | `src/regression_model/data/sources.py` | Yield one dict per corporate action event |
+| `dividend_records()` | `src/regression_model/data/sources.py` | Yield one dict per dividend event |
+| `fx_rate_records()` | `src/regression_model/data/sources.py` | Yield one dict per FX rate observation |
+
+Also confirm before running:
+- **FX rate direction** — `normalize.py → convert_to_usd`: is `value` fromcurrency-per-USD (divide) or USD-per-fromcurrency (multiply)? See `KEVIN_CHECK_HERE` comment on that line.
+
+---
+
 ## Quick Start
 
 1. **Install**
@@ -9,20 +26,13 @@ A quantitative finance tool that fits regression models between target and drive
    pip install -e ".[dev]"
    ```
 
-2. **Prepare data** — Place CSVs in a data directory (see [Input Data](#input-data)):
-   ```
-   data/sample/prices.csv
-   data/sample/corp_actions.csv   # optional
-   data/sample/dividends.csv      # optional
-   data/sample/fx_rates.csv       # optional, required for non-USD securities
-   ```
+2. **Implement data sources** — Fill in the three generator functions in
+   `src/regression_model/data/sources.py`. Each function must `yield` one
+   dict per record; the required keys are documented in the comments inside
+   each function. Look for `KEVIN_CHECK_HERE` markers.
 
 3. **Configure** — Edit `config.yaml` (see [Configuration](#configuration)):
    ```yaml
-   data:
-     prices_path: "data/sample/prices.csv"
-     corp_actions_path: "data/sample/corp_actions.csv"
-     dividends_path: "data/sample/dividends.csv"
    targets:
      - "BBG000BVPV84"
    drivers:
@@ -49,60 +59,70 @@ A quantitative finance tool that fits regression models between target and drive
 
 ## Input Data
 
-All input files are CSV. Only `prices.csv` is required; the others are optional but must be provided if the data contains non-USD securities or corporate events.
+Data is supplied via four generator functions in `src/regression_model/data/sources.py`. Implement each function to yield dicts with the keys described below.
 
-See [`docs/data-format.md`](docs/data-format.md) for full specs and example rows.
+All security records use `Isin` as the source identifier. At the loader boundary, ISINs are resolved to FIGIs (via OpenFIGI) before the pipeline runs, so all internal identifiers and output column names are FIGIs. For instruments without a FIGI (e.g. unlisted derivatives), supply a `proxy_id` — a globally unique fallback identifier you control.
 
-### prices.csv
+### `price_records()`
 
-| Column | Type | Format | Description |
-|---|---|---|---|
-| `identifier` | string | Bloomberg FIGI or similar | Security identifier |
-| `currency` | string | ISO 4217 (e.g. `USD`, `EUR`) | Currency of the price |
-| `date` | string | `YYYY-MM-DD` | Price date |
-| `price` | float | positive number | Closing price in local currency |
+| Key | Type | Description |
+|---|---|---|
+| `Isin` | string | Security ISIN |
+| `pricedate` | string / date | Price date |
+| `Price` | float | Closing price / NAV in local currency |
+| `currency` | string | ISO 4217 currency code (e.g. `USD`, `GBP`) |
+| `proxy_id` *(optional)* | string | Globally unique fallback if no FIGI exists |
 
-Example row: `BBG000BVPV84,USD,2023-01-03,185.0`
+ETF NAV rows can be included here as ordinary price records.
 
-### corp_actions.csv
+### `corp_action_records()`
 
-| Column | Type | Format | Description |
-|---|---|---|---|
-| `identifier` | string | same as prices | Security identifier |
-| `ex_date` | string | `YYYY-MM-DD` | First ex-date of the event |
-| `ratio_shares_adjustment` | float | e.g. `1.0` | Shares ratio (reserved; see below) |
-| `ratio_price_adjustment` | float | e.g. `0.5` for 2-for-1 split | Multiplier applied to pre-event prices |
+| Key | Type | Description |
+|---|---|---|
+| `Isin` | string | Security ISIN |
+| `XdDate` | string / date | Ex-date of the event |
+| `PriceAdjustmentFactor` | float | Multiplier applied to prices before `XdDate` (e.g. `0.5` for a 2-for-1 split) |
+| `proxy_id` *(optional)* | string | Globally unique fallback if no FIGI exists |
 
-Example row: `BBG000BVPV84,2023-06-15,2.0,0.5`
+Additional fields present in the source payload (`Bloomberg`, `MIC`, `Name`, `SecurityType`, `ShareAdjustmentFactor`, …) are passed through and ignored.
 
-### dividends.csv
+### `dividend_records()`
 
-| Column | Type | Format | Description |
-|---|---|---|---|
-| `identifier` | string | same as prices | Security identifier |
-| `ex_date` | string | `YYYY-MM-DD` | Ex-dividend date |
-| `ratio_shares_adjustment` | float | e.g. `1.0` | Shares ratio applied after dividend subtraction |
-| `div_amount` | float | same currency as price | Dividend amount per share |
+| Key | Type | Description |
+|---|---|---|
+| `Isin` | string | Security ISIN |
+| `XdDate` | string / date | Ex-dividend date |
+| `NetAmount` | float | Net dividend per share (used for price adjustment) |
+| `GrossAmount` | float | Gross dividend per share |
+| `proxy_id` *(optional)* | string | Globally unique fallback if no FIGI exists |
+| `PayDate` *(optional)* | string / date | Payment date |
+| `AnnounceDate` *(optional)* | string / date | Announcement date |
+| `DividendType` *(optional)* | string | Dividend type classification |
+| `Bloomberg` *(optional)* | string | Bloomberg identifier |
 
-Example row: `BBG000BVPV84,2023-03-15,1.0,0.50`
+### `fx_rate_records()`
 
-### fx_rates.csv
+Required when any security's `currency` is not `USD`. Missing dates are forward-filled.
 
-Required when any security's `currency` is not `USD`. Rates are expressed as **foreign currency units per 1 USD** (`price_usd = price_local / rate`). Missing dates are forward-filled.
+> **KEVIN_CHECK_HERE** — the pipeline assumes `value` is expressed as
+> **fromcurrency units per 1 USD** (`price_usd = price_local / value`).
+> If your feed expresses rates as USD per fromcurrency, flip the division
+> to multiplication in `normalize.py → convert_to_usd`.
 
-| Column | Type | Format | Description |
-|---|---|---|---|
-| `date` | string | `YYYY-MM-DD` | Rate date |
-| `fxsymbol` | string | ISO 4217 currency code | Currency being quoted (e.g. `EUR`) |
-| `rate` | float | positive number | Units of `fxsymbol` per 1 USD |
-
-Example row: `2023-01-03,EUR,0.9350`
+| Key | Type | Description |
+|---|---|---|
+| `pricedate` | string / date | Rate date |
+| `fromcurrencycode` | string | Source currency (e.g. `GBP`) |
+| `tocurrencycode` | string | Target currency (e.g. `USD`) |
+| `value` | float | Exchange rate |
 
 ---
 
 ## Identifier Resolution
 
-By default, targets and drivers in `config.yaml` must be FIGIs. Optionally, you can supply tickers, ISINs, CUSIPs, or any identifier type supported by OpenFIGI and have them resolved automatically before the pipeline runs. FIGIs are passed through unchanged — zero API calls for pure-FIGI configs.
+ISINs in source records are resolved to FIGIs at the loader boundary before the pipeline runs. FIGIs are passed through unchanged — zero API calls for records that already carry FIGIs.
+
+Resolution runs automatically whenever a `resolution` section is present in `config.yaml`.
 
 ### Install with resolution support
 
@@ -112,32 +132,29 @@ pip install openfigi-cache   # provides batch_lookup + local caching
 export OPENFIGI_API_KEY=your-key
 ```
 
-### Quick start with tickers
+### Config
 
 ```yaml
 resolution:
-  enabled: true
-  id_type: "TICKER"
-  exch_code: "US"
+  id_type: "ID_ISIN"
   on_failure: "raise"        # or "warn" / "skip"
   cache_path: ".figi_cache.json"
   # optional per-symbol overrides:
   overrides:
     US0378331005:
       id_type: "ID_ISIN"
+      exch_code: "US"
 
 targets:
-  - AAPL                     # ticker — resolved to FIGI automatically
+  - BBG000BVPV84             # already a FIGI — passed through, no API call
 drivers:
-  - MSFT
-  - BBG000BPH459             # already a FIGI — passed through, no API call
+  - BBG0000DYRK6
 ```
 
 ### Resolution config reference
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `resolution.enabled` | bool | `false` | Must be `true` to activate resolution |
 | `resolution.id_type` | string | `"TICKER"` | Default OpenFIGI `idType` for all symbols |
 | `resolution.exch_code` | string | `null` | OpenFIGI exchange code filter (e.g. `"US"`) |
 | `resolution.mic_code` | string | `null` | MIC filter (e.g. `"XNAS"`) |
@@ -154,12 +171,8 @@ Full reference for `config.yaml`:
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `data.prices_path` | string | — | Path to `prices.csv` (required) |
-| `data.corp_actions_path` | string | `null` | Path to `corp_actions.csv` (optional) |
-| `data.dividends_path` | string | `null` | Path to `dividends.csv` (optional) |
-| `data.fx_rates_path` | string | `null` | Path to `fx_rates.csv` (optional) |
-| `targets` | list of strings | — | FIGIs (or resolvable identifiers) to use as regression Y variables (required) |
-| `drivers` | list of strings | — | FIGIs (or resolvable identifiers) to use as regression X variables (required) |
+| `targets` | list of strings | — | FIGIs to use as regression Y variables (required) |
+| `drivers` | list of strings | — | FIGIs to use as regression X variables (required) |
 | `regression.method` | string | `"ols"` | Regression method: `ols`, `lasso`, `lars`, `elastic_net` |
 | `regression.params` | dict | `{}` | Extra kwargs forwarded to the sklearn estimator |
 | `preprocessing.lookback_days` | int | `0` | Trim history to this many calendar days before the latest date; `0` = unlimited |
@@ -175,13 +188,13 @@ Full reference for `config.yaml`:
 
 ## Corporate Action Adjustments
 
-Prices are backward-adjusted so that historical returns are comparable across split and dividend events. See [`docs/corporate-actions.md`](docs/corporate-actions.md) for the full explanation and worked examples.
+Prices are backward-adjusted so that historical returns are comparable across split and dividend events.
 
-**Stock split** — the `ratio_price_adjustment` from `corp_actions.csv` is multiplied into all prices strictly before `ex_date`. For a 2-for-1 split, `ratio_price_adjustment = 0.5`, halving all pre-split prices.
+**Stock split** — `PriceAdjustmentFactor` from `corp_action_records()` is multiplied into all prices strictly before `XdDate`. For a 2-for-1 split, `PriceAdjustmentFactor = 0.5`, halving all pre-split prices.
 
-**Dividend** — for each record in `dividends.csv`, prices strictly before `ex_date` are adjusted as:
+**Dividend** — `NetAmount` from `dividend_records()` is subtracted from all prices strictly before `XdDate`:
 ```
-adjusted_price = (price - div_amount) / ratio_shares_adjustment
+adjusted_price = price - NetAmount
 ```
 
 Multiple events are processed **latest to earliest** so that earlier adjustments are not double-counted.

@@ -98,31 +98,40 @@ def _handle_failure(symbol: str, config: IdentifierResolutionConfig) -> None:
     # "skip" → silent
 
 
-def remap_price_records(
+def remap_records(
     records: list[dict],
     symbol_to_figi: dict[str, str | None],
 ) -> list[dict]:
-    """Rewrite the ``identifier`` field in each price record using the FIGI map.
+    """Resolve ``Isin`` → FIGI and rename the key to ``figi``.
 
-    - Records whose identifier is not in the map (already FIGIs) pass through.
-    - Records that resolved to ``None`` are dropped with a log warning.
+    - Records whose ``Isin`` is not in the map (already FIGIs) pass through
+      with the key renamed to ``figi``.
+    - Records that resolved to ``None`` fall back to ``proxy_id`` if present
+      (caller must guarantee global uniqueness of proxy IDs).
+    - Records with no FIGI and no ``proxy_id`` are dropped with a warning.
 
     Args:
-        records: Raw price rows from ``_read_csv_dicts``.
+        records: Source rows (prices, corp actions, or dividends).
         symbol_to_figi: Map returned by ``resolve_identifiers``.
 
     Returns:
-        Price records with ``identifier`` replaced by the resolved FIGI.
+        Records with ``Isin`` key removed and ``figi`` key added.
     """
     out: list[dict] = []
     for row in records:
-        sym = row["identifier"]
+        sym = row["Isin"]
+        base = {k: v for k, v in row.items() if k != "Isin"}
         if sym not in symbol_to_figi:
-            out.append(row)
+            out.append({**base, "figi": sym})
             continue
         figi = symbol_to_figi[sym]
         if figi is None:
-            log.warning("Dropping price record: could not resolve %r to a FIGI", sym)
-            continue
-        out.append({**row, "identifier": figi})
+            proxy = row.get("proxy_id")
+            if proxy:
+                log.warning("No FIGI for %r — using proxy_id %r", sym, proxy)
+                out.append({**base, "figi": proxy})
+            else:
+                log.warning("Dropping record: no FIGI and no proxy_id for %r", sym)
+        else:
+            out.append({**base, "figi": figi})
     return out
