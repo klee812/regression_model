@@ -187,6 +187,9 @@ def normalize(
     wide = adjust_for_dividends(wide, div_records)
     wide = convert_to_usd(wide, currencies, fx_records)
 
+    if not targets:
+        targets = [c for c in wide.columns if c not in set(drivers)]
+
     return PriceData(
         targets=wide[targets],
         drivers=wide[drivers],

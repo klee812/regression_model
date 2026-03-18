@@ -41,7 +41,7 @@ def load_config(path: str | Path) -> AppConfig:
 
     return AppConfig(
         data=data_cfg,
-        targets=raw["targets"],
+        targets=raw.get("targets"),  # None if omitted — means all instruments except drivers
         drivers=raw["drivers"],
         regression=regression_cfg,
         output=output_cfg,

@@ -33,7 +33,7 @@ def load_all(config: AppConfig) -> PriceData:
             targets + drivers + [r["Isin"] for r in prices]
         ))
         symbol_to_figi = resolve_identifiers(all_symbols, config.resolution)
-        targets = [symbol_to_figi.get(t, t) for t in targets if symbol_to_figi.get(t) is not None]
+        targets = [symbol_to_figi.get(t, t) for t in (targets or []) if symbol_to_figi.get(t) is not None] or None
         drivers = [symbol_to_figi.get(d, d) for d in drivers if symbol_to_figi.get(d) is not None]
         prices = remap_records(prices, symbol_to_figi)
         corp_actions = remap_records(corp_actions, symbol_to_figi)

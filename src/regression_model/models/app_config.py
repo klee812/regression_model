@@ -16,7 +16,7 @@ class AppConfig:
     """Root configuration object assembled from a YAML config file."""
 
     data: DataConfig
-    targets: list[str]
+    targets: list[str] | None  # None = all instruments in price data except drivers
     drivers: list[str]
     regression: RegressionConfig = field(default_factory=RegressionConfig)
     output: OutputConfig = field(default_factory=OutputConfig)

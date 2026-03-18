@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import re
 import warnings
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -68,7 +69,7 @@ def resolve_identifiers(
             groups.setdefault(key, []).append(sym)
 
     for (id_type, exch_code, mic_code, currency), symbols in groups.items():
-        kwargs: dict = {"id_type": id_type, "cache_path": config.cache_path}
+        kwargs: dict = {"id_type": id_type, "cache_path": Path(config.cache_path)}
         if exch_code is not None:
             kwargs["exch_code"] = exch_code
         if mic_code is not None:

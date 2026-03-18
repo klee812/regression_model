@@ -27,7 +27,7 @@ def main(config_path: str) -> None:
     strategy = registry.create(config.regression.method, **config.regression.params)
 
     results = []
-    for figi in config.targets:
+    for figi in returns.targets.columns:
         y = returns.targets[figi]
         x = returns.drivers
         result = strategy.fit(figi, y, x)
