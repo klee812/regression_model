@@ -3,7 +3,6 @@ __pycache__/
 .pytest_cache/
 *.csv
 *.txt
-*.yaml
 *.json
 .claude
 .venv

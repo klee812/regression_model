@@ -1,0 +1,14 @@
+drivers:
+  - "BBG000XXXXX"   # ETF NAV proxy 1 — replace with actual FIGI
+  - "BBG000YYYYY"   # ETF NAV proxy 2 — replace with actual FIGI
+
+regression:
+  method: "ols"
+  params: {}
+
+preprocessing:
+  lookback_days: 0
+
+output:
+  format: "json"
+  path: "output/results.json"
