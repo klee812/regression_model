@@ -2,6 +2,8 @@ drivers:
   - "BBG000XXXXX"   # ETF NAV proxy 1 — replace with actual FIGI
   - "BBG000YYYYY"   # ETF NAV proxy 2 — replace with actual FIGI
 
+cache_path: "data/price_cache.parquet"
+
 regression:
   method: "ols"
   params: {}

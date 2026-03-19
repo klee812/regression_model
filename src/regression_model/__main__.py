@@ -1,25 +1,60 @@
-"""Entry point for ``python -m regression_model <config.yaml>``."""
+"""Entry point for the regression_model pipeline.
+
+Commands:
+    prepare  — fetch and normalise price data, save to Parquet cache
+    run      — load cached prices and run regression
+"""
 
 from __future__ import annotations
 
 import sys
 
 from regression_model.config import load_config
-from regression_model.data.loader import load_all
-from regression_model.data.preprocess import prepare_prices, prepare_returns
-from regression_model.data.transforms import prices_to_returns
-from regression_model.output.writer import write_results
-from regression_model.regression import registry
 
 
-def main(config_path: str) -> None:
-    """Run the full regression pipeline from config to output.
+def prepare(config_path: str) -> None:
+    """Fetch data from sources, normalise, and save to the Parquet cache.
+
+    This is the slow step — run it ahead of time.
 
     Args:
         config_path: Path to the YAML configuration file.
     """
+    from regression_model.data.loader import load_all
+    from regression_model.data.cache import save_price_cache
+
     config = load_config(config_path)
+
+    if not config.cache_path:
+        print("Error: 'cache_path' must be set in config.yaml for the prepare step.", file=sys.stderr)
+        sys.exit(1)
+
+    print("Fetching and normalising price data...")
     prices = load_all(config)
+    save_price_cache(prices, config.cache_path)
+
+
+def run(config_path: str) -> None:
+    """Load cached prices and run regression.
+
+    This is the fast step — requires prepare to have been run first.
+
+    Args:
+        config_path: Path to the YAML configuration file.
+    """
+    from regression_model.data.cache import load_price_cache
+    from regression_model.data.preprocess import prepare_prices, prepare_returns
+    from regression_model.data.transforms import prices_to_returns
+    from regression_model.output.writer import write_results
+    from regression_model.regression import registry
+
+    config = load_config(config_path)
+
+    if not config.cache_path:
+        print("Error: 'cache_path' must be set in config.yaml for the run step.", file=sys.stderr)
+        sys.exit(1)
+
+    prices = load_price_cache(config.cache_path, config.drivers, config.targets)
     prices = prepare_prices(prices, config.preprocessing)
     returns = prices_to_returns(prices)
     returns = prepare_returns(returns, config.preprocessing)
@@ -38,7 +73,10 @@ def main(config_path: str) -> None:
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        print("Usage: python -m regression_model <config.yaml>", file=sys.stderr)
+    commands = {"prepare": prepare, "run": run}
+
+    if len(sys.argv) != 3 or sys.argv[1] not in commands:
+        print("Usage: python -m regression_model <prepare|run> <config.yaml>", file=sys.stderr)
         sys.exit(1)
-    main(sys.argv[1])
+
+    commands[sys.argv[1]](sys.argv[2])

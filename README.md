@@ -24,36 +24,59 @@ Also confirm before running:
 1. **Install**
    ```bash
    pip install -e ".[dev]"
+   pip install -e /path/to/claude_code/openfigi_cache
+   export OPENFIGI_API_KEY=your-key
    ```
 
-2. **Implement data sources** — Fill in the three generator functions in
-   `src/regression_model/data/sources.py`. Each function must `yield` one
-   dict per record; the required keys are documented in the comments inside
-   each function. Look for `KEVIN_CHECK_HERE` markers.
+2. **Implement data sources** — Fill in the four generator functions in
+   `src/regression_model/data/sources.py`. Required keys are documented in
+   the comments inside each function. Look for `KEVIN_CHECK_HERE` markers.
 
 3. **Configure** — Edit `config.yaml` (see [Configuration](#configuration)):
    ```yaml
-   targets:
-     - "BBG000BVPV84"
    drivers:
-     - "BBG0000DYRK6"
-     - "BBG000BB2N45"
+     - "BBG000XXXXX"   # ETF NAV proxy — replace with actual FIGI
+     - "BBG000YYYYY"
+
+   cache_path: "data/price_cache.parquet"
+
    regression:
      method: "ols"
      params: {}
+
    preprocessing:
-     lookback_days: 70
+     lookback_days: 0
+
    output:
      format: "json"
      path: "output/results.json"
    ```
+   Omit `targets` to model every instrument in `price_records()` that is not a driver.
 
-4. **Run**
+4. **Fetch and cache price data** *(slow — run once or on a schedule)*
    ```bash
-   python -m regression_model config.yaml
+   python -m regression_model prepare config.yaml
    ```
 
-5. **Read output** — Results are written to the path in `output.path` (see [Output Format](#output-format)).
+5. **Run regression** *(fast — run as often as needed)*
+   ```bash
+   python -m regression_model run config.yaml
+   ```
+
+6. **Read output** — Results written to `output.path` (see [Output Format](#output-format)).
+
+---
+
+## Two-Step Pipeline
+
+The pipeline is intentionally split to isolate the slow data fetch from the fast regression calculation.
+
+| Step | Command | What it does |
+|---|---|---|
+| `prepare` | `python -m regression_model prepare config.yaml` | Runs generators → resolves ISINs to FIGIs → normalises prices → saves Parquet cache |
+| `run` | `python -m regression_model run config.yaml` | Loads Parquet cache → preprocesses returns → fits regression → writes output |
+
+Re-run `prepare` whenever your price history needs refreshing. Re-run `run` whenever you want to update regression results, change drivers/targets, or adjust config parameters — no data fetch required.
 
 ---
 
@@ -120,15 +143,14 @@ Required when any security's `currency` is not `USD`. Missing dates are forward-
 
 ## Identifier Resolution
 
-ISINs in source records are resolved to FIGIs at the loader boundary before the pipeline runs. FIGIs are passed through unchanged — zero API calls for records that already carry FIGIs.
+ISINs in source records are resolved to FIGIs at the loader boundary before the pipeline runs. FIGIs are passed through unchanged — zero API calls for records that already carry FIGIs. For instruments with no FIGI, provide a `proxy_id` in the source record.
 
 Resolution runs automatically whenever a `resolution` section is present in `config.yaml`.
 
-### Install with resolution support
+### Install
 
 ```bash
-pip install -e ".[resolution]"
-pip install openfigi-cache   # provides batch_lookup + local caching
+pip install -e /path/to/claude_code/openfigi_cache
 export OPENFIGI_API_KEY=your-key
 ```
 
@@ -139,16 +161,10 @@ resolution:
   id_type: "ID_ISIN"
   on_failure: "raise"        # or "warn" / "skip"
   cache_path: ".figi_cache.json"
-  # optional per-symbol overrides:
-  overrides:
+  overrides:                 # optional per-symbol overrides
     US0378331005:
       id_type: "ID_ISIN"
       exch_code: "US"
-
-targets:
-  - BBG000BVPV84             # already a FIGI — passed through, no API call
-drivers:
-  - BBG0000DYRK6
 ```
 
 ### Resolution config reference
@@ -159,7 +175,7 @@ drivers:
 | `resolution.exch_code` | string | `null` | OpenFIGI exchange code filter (e.g. `"US"`) |
 | `resolution.mic_code` | string | `null` | MIC filter (e.g. `"XNAS"`) |
 | `resolution.currency` | string | `null` | Currency filter (e.g. `"USD"`) |
-| `resolution.cache_path` | string | `".figi_cache.json"` | Path for the local lookup cache |
+| `resolution.cache_path` | string | `".figi_cache.json"` | Path for the local FIGI lookup cache |
 | `resolution.on_failure` | string | `"raise"` | What to do when a symbol can't be resolved: `raise`, `warn`, or `skip` |
 | `resolution.overrides` | dict | `{}` | Per-symbol overrides for any of the above fields |
 
@@ -171,8 +187,9 @@ Full reference for `config.yaml`:
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `targets` | list of strings | — | FIGIs to use as regression Y variables (required) |
-| `drivers` | list of strings | — | FIGIs to use as regression X variables (required) |
+| `drivers` | list of strings | — | ETF / proxy FIGIs to use as regression X variables (required) |
+| `targets` | list of strings | `null` | FIGIs to model; omit to model all instruments except drivers |
+| `cache_path` | string | `null` | Path to the Parquet price cache (required for `prepare` and `run`) |
 | `regression.method` | string | `"ols"` | Regression method: `ols`, `lasso`, `lars`, `elastic_net` |
 | `regression.params` | dict | `{}` | Extra kwargs forwarded to the sklearn estimator |
 | `preprocessing.lookback_days` | int | `0` | Trim history to this many calendar days before the latest date; `0` = unlimited |
@@ -182,7 +199,7 @@ Full reference for `config.yaml`:
 | `preprocessing.validate_prices` | bool | `true` | Enforce positive prices, no duplicate dates |
 | `preprocessing.min_observations` | int | `10` | Minimum rows required after cleaning |
 | `output.format` | string | `"json"` | Output format: `json` or `csv` |
-| `output.path` | string | — | Destination file path (required) |
+| `output.path` | Path | `output/results.json` | Destination file path |
 
 ---
 
@@ -215,6 +232,16 @@ Extra kwargs in `regression.params` are forwarded directly to the underlying skl
 ---
 
 ## Output Format
+
+Results are keyed by target FIGI. Load them back as typed objects in the proxy table step:
+
+```python
+from regression_model.output import load_results
+
+results = load_results("output/results.json")
+for r in results:
+    print(r.target_figi, r.betas, r.r_squared)
+```
 
 ### JSON (`output.format: "json"`)
 ```json
