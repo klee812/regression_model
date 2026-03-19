@@ -72,11 +72,15 @@ def run(config_path: str) -> None:
     print(f"Results written to {config.output.path}")
 
 
+DEFAULT_CONFIG = r"C:\inav_data\regression_model\input\config.yaml"
+
 if __name__ == "__main__":
     commands = {"prepare": prepare, "run": run}
 
-    if len(sys.argv) != 3 or sys.argv[1] not in commands:
-        print("Usage: python -m regression_model <prepare|run> <config.yaml>", file=sys.stderr)
+    if len(sys.argv) < 2 or sys.argv[1] not in commands:
+        print(f"Usage: python -m regression_model <prepare|run> [config.yaml]", file=sys.stderr)
+        print(f"       config.yaml defaults to: {DEFAULT_CONFIG}", file=sys.stderr)
         sys.exit(1)
 
-    commands[sys.argv[1]](sys.argv[2])
+    config_path = sys.argv[2] if len(sys.argv) == 3 else DEFAULT_CONFIG
+    commands[sys.argv[1]](config_path)

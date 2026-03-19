@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import csv
 import json
+import shutil
+from datetime import datetime
 from pathlib import Path
 
 from regression_model.models import RegressionResult
@@ -52,6 +54,10 @@ def write_results(
         _write_csv(results, method, path)
     else:
         raise ValueError(f"Unknown output format {fmt!r}. Available: json, csv")
+
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    stamped_path = path.with_stem(f"{path.stem}_{stamp}")
+    shutil.copy2(path, stamped_path)
 
 
 def _write_json(results: list[RegressionResult], method: str, path: Path) -> None:
