@@ -8,7 +8,6 @@ import yaml
 
 from regression_model.models import (
     AppConfig,
-    IdentifierResolutionConfig,
     OutputConfig,
     PreprocessingConfig,
     RegressionConfig,
@@ -27,22 +26,11 @@ def load_config(path: str | Path) -> AppConfig:
     with open(path) as f:
         raw = yaml.safe_load(f)
 
-    regression_cfg = RegressionConfig(**raw.get("regression", {}))
-    output_cfg = OutputConfig(**raw.get("output", {}))
-    preprocessing_cfg = PreprocessingConfig(**raw.get("preprocessing", {}))
-
-    resolution_cfg = None
-    if "resolution" in raw:
-        r = dict(raw["resolution"])
-        overrides = r.pop("overrides", {})
-        resolution_cfg = IdentifierResolutionConfig(**r, overrides=overrides)
-
     return AppConfig(
         targets=raw.get("targets"),  # None if omitted — means all instruments except drivers
         drivers=raw["drivers"],
-        regression=regression_cfg,
-        output=output_cfg,
-        preprocessing=preprocessing_cfg,
-        resolution=resolution_cfg,
+        regression=RegressionConfig(**raw.get("regression", {})),
+        output=OutputConfig(**raw.get("output", {})),
+        preprocessing=PreprocessingConfig(**raw.get("preprocessing", {})),
         cache_path=raw.get("cache_path"),
     )

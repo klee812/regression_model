@@ -24,8 +24,6 @@ Also confirm before running:
 1. **Install**
    ```bash
    pip install -e ".[dev]"
-   pip install -e /path/to/claude_code/openfigi_cache
-   export OPENFIGI_API_KEY=your-key
    ```
 
 2. **Implement data sources** — Fill in the four generator functions in
@@ -35,8 +33,8 @@ Also confirm before running:
 3. **Configure** — Edit `config.yaml` (see [Configuration](#configuration)):
    ```yaml
    drivers:
-     - "BBG000XXXXX"   # ETF NAV proxy — replace with actual FIGI
-     - "BBG000YYYYY"
+     - "IE00B4L5Y983"   # iShares Core MSCI World ETF — replace with actual ISINs
+     - "IE00B3XXRP09"
 
    cache_path: "data/price_cache.parquet"
 
@@ -65,6 +63,8 @@ Also confirm before running:
 
 6. **Read output** — Results written to `output.path` (see [Output Format](#output-format)).
 
+The default config path is `C:\inav_data\regression_model\input\config.yaml` — you can omit the path argument if your config lives there.
+
 ---
 
 ## Two-Step Pipeline
@@ -73,7 +73,7 @@ The pipeline is intentionally split to isolate the slow data fetch from the fast
 
 | Step | Command | What it does |
 |---|---|---|
-| `prepare` | `python -m regression_model prepare config.yaml` | Runs generators → resolves ISINs to FIGIs → normalises prices → saves Parquet cache |
+| `prepare` | `python -m regression_model prepare config.yaml` | Runs generators → normalises prices → saves Parquet cache |
 | `run` | `python -m regression_model run config.yaml` | Loads Parquet cache → preprocesses returns → fits regression → writes output |
 
 Re-run `prepare` whenever your price history needs refreshing. Re-run `run` whenever you want to update regression results, change drivers/targets, or adjust config parameters — no data fetch required.
@@ -84,7 +84,7 @@ Re-run `prepare` whenever your price history needs refreshing. Re-run `run` when
 
 Data is supplied via four generator functions in `src/regression_model/data/sources.py`. Implement each function to yield dicts with the keys described below.
 
-All security records use `Isin` as the source identifier. At the loader boundary, ISINs are resolved to FIGIs (via OpenFIGI) before the pipeline runs, so all internal identifiers and output column names are FIGIs. For instruments without a FIGI (e.g. unlisted derivatives), supply a `proxy_id` — a globally unique fallback identifier you control.
+All security records use `Isin` as the source identifier. ISINs flow through as column names in the Parquet cache and in the output.
 
 ### `price_records()`
 
@@ -94,7 +94,7 @@ All security records use `Isin` as the source identifier. At the loader boundary
 | `pricedate` | string / date | Price date |
 | `Price` | float | Closing price / NAV in local currency |
 | `currency` | string | ISO 4217 currency code (e.g. `USD`, `GBP`) |
-| `proxy_id` *(optional)* | string | Globally unique fallback if no FIGI exists |
+| `proxy_id` *(optional)* | string | Globally unique fallback identifier for instruments without an ISIN |
 
 ETF NAV rows can be included here as ordinary price records.
 
@@ -105,7 +105,7 @@ ETF NAV rows can be included here as ordinary price records.
 | `Isin` | string | Security ISIN |
 | `XdDate` | string / date | Ex-date of the event |
 | `PriceAdjustmentFactor` | float | Multiplier applied to prices before `XdDate` (e.g. `0.5` for a 2-for-1 split) |
-| `proxy_id` *(optional)* | string | Globally unique fallback if no FIGI exists |
+| `proxy_id` *(optional)* | string | Globally unique fallback identifier for instruments without an ISIN |
 
 Additional fields present in the source payload (`Bloomberg`, `MIC`, `Name`, `SecurityType`, `ShareAdjustmentFactor`, …) are passed through and ignored.
 
@@ -117,7 +117,7 @@ Additional fields present in the source payload (`Bloomberg`, `MIC`, `Name`, `Se
 | `XdDate` | string / date | Ex-dividend date |
 | `NetAmount` | float | Net dividend per share (used for price adjustment) |
 | `GrossAmount` | float | Gross dividend per share |
-| `proxy_id` *(optional)* | string | Globally unique fallback if no FIGI exists |
+| `proxy_id` *(optional)* | string | Globally unique fallback identifier for instruments without an ISIN |
 | `PayDate` *(optional)* | string / date | Payment date |
 | `AnnounceDate` *(optional)* | string / date | Announcement date |
 | `DividendType` *(optional)* | string | Dividend type classification |
@@ -141,54 +141,14 @@ Required when any security's `currency` is not `USD`. Missing dates are forward-
 
 ---
 
-## Identifier Resolution
-
-ISINs in source records are resolved to FIGIs at the loader boundary before the pipeline runs. FIGIs are passed through unchanged — zero API calls for records that already carry FIGIs. For instruments with no FIGI, provide a `proxy_id` in the source record.
-
-Resolution runs automatically whenever a `resolution` section is present in `config.yaml`.
-
-### Install
-
-```bash
-pip install -e /path/to/claude_code/openfigi_cache
-export OPENFIGI_API_KEY=your-key
-```
-
-### Config
-
-```yaml
-resolution:
-  id_type: "ID_ISIN"
-  on_failure: "raise"        # or "warn" / "skip"
-  cache_path: ".figi_cache.json"
-  overrides:                 # optional per-symbol overrides
-    US0378331005:
-      id_type: "ID_ISIN"
-      exch_code: "US"
-```
-
-### Resolution config reference
-
-| Key | Type | Default | Description |
-|---|---|---|---|
-| `resolution.id_type` | string | `"TICKER"` | Default OpenFIGI `idType` for all symbols |
-| `resolution.exch_code` | string | `null` | OpenFIGI exchange code filter (e.g. `"US"`) |
-| `resolution.mic_code` | string | `null` | MIC filter (e.g. `"XNAS"`) |
-| `resolution.currency` | string | `null` | Currency filter (e.g. `"USD"`) |
-| `resolution.cache_path` | string | `".figi_cache.json"` | Path for the local FIGI lookup cache |
-| `resolution.on_failure` | string | `"raise"` | What to do when a symbol can't be resolved: `raise`, `warn`, or `skip` |
-| `resolution.overrides` | dict | `{}` | Per-symbol overrides for any of the above fields |
-
----
-
 ## Configuration
 
 Full reference for `config.yaml`:
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `drivers` | list of strings | — | ETF / proxy FIGIs to use as regression X variables (required) |
-| `targets` | list of strings | `null` | FIGIs to model; omit to model all instruments except drivers |
+| `drivers` | list of strings | — | ISINs to use as regression X variables (required) |
+| `targets` | list of strings | `null` | ISINs to model; omit to model all instruments except drivers |
 | `cache_path` | string | `null` | Path to the Parquet price cache (required for `prepare` and `run`) |
 | `regression.method` | string | `"ols"` | Regression method: `ols`, `lasso`, `lars`, `elastic_net` |
 | `regression.params` | dict | `{}` | Extra kwargs forwarded to the sklearn estimator |
@@ -233,7 +193,7 @@ Extra kwargs in `regression.params` are forwarded directly to the underlying skl
 
 ## Output Format
 
-Results are keyed by target FIGI. Load them back as typed objects in the proxy table step:
+Results are keyed by target ISIN. Load them back as typed objects in the proxy table step:
 
 ```python
 from regression_model.output import load_results
@@ -248,10 +208,10 @@ for r in results:
 {
   "method": "ols",
   "results": {
-    "BBG000BVPV84": {
+    "IE00B4L5Y983": {
       "betas": {
-        "BBG0000DYRK6": 0.175,
-        "BBG000BB2N45": 0.176
+        "IE00B3XXRP09": 0.175,
+        "IE00BKM4GZ66": 0.176
       },
       "intercept": -0.0017,
       "r_squared": 0.098,
@@ -263,9 +223,11 @@ for r in results:
 
 ### CSV (`output.format: "csv"`)
 ```
-target_figi,method,intercept,r_squared,n_observations,beta_BBG0000DYRK6,beta_BBG000BB2N45
-BBG000BVPV84,ols,-0.0017,0.098,50,0.175,0.176
+target_figi,method,intercept,r_squared,n_observations,beta_IE00B3XXRP09,beta_IE00BKM4GZ66
+IE00B4L5Y983,ols,-0.0017,0.098,50,0.175,0.176
 ```
+
+Each run also writes a timestamped copy alongside the main file (e.g. `results_20260320_143022.json`) for audit purposes.
 
 ---
 

@@ -10,6 +10,7 @@ from __future__ import annotations
 import sys
 
 from regression_model.config import load_config
+from regression_model.settings import DEFAULT_CONFIG_PATH
 
 
 def prepare(config_path: str) -> None:
@@ -72,7 +73,18 @@ def run(config_path: str) -> None:
     print(f"Results written to {config.output.path}")
 
 
-DEFAULT_CONFIG = r"C:\inav_data\regression_model\input\config.yaml"
+DEFAULT_CONFIG = DEFAULT_CONFIG_PATH
+
+
+def debug_prepare() -> None:
+    """PyCharm debug entry point — run prepare with no arguments."""
+    prepare(DEFAULT_CONFIG)
+
+
+def debug_run() -> None:
+    """PyCharm debug entry point — run regression with no arguments."""
+    run(DEFAULT_CONFIG)
+
 
 if __name__ == "__main__":
     commands = {"prepare": prepare, "run": run}

@@ -156,6 +156,33 @@ def convert_to_usd(
     return prices
 
 
+def build_adjusted_prices(
+    prices: Iterable[dict],
+    corp_actions: Iterable[dict],
+    dividends: Iterable[dict],
+    fx_rates: Iterable[dict],
+) -> pd.DataFrame:
+    """Normalize prices without splitting into targets/drivers.
+
+    Used by the prepare step — FIGI resolution and target/driver split
+    happen later at run time.
+
+    Args:
+        prices: Price record dicts.
+        corp_actions: Corporate action record dicts.
+        dividends: Dividend record dicts.
+        fx_rates: FX rate record dicts.
+
+    Returns:
+        Wide adjusted, USD-denominated DataFrame (date index, ISIN columns).
+    """
+    wide, currencies = build_price_table(list(prices))
+    wide = adjust_for_corp_actions(wide, list(corp_actions))
+    wide = adjust_for_dividends(wide, list(dividends))
+    wide = convert_to_usd(wide, currencies, list(fx_rates))
+    return wide
+
+
 def normalize(
     prices: Iterable[dict],
     corp_actions: Iterable[dict],
